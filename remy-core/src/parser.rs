@@ -20,7 +20,7 @@ pub(crate) struct LogosState {
 }
 
 #[derive(Logos, Debug, PartialEq, Eq, Hash, Clone)]
-#[logos(skip "(//[^\n]*)|([ \t\r\n\n]+)|(/\\*[^(*/)]*\\*/)")]
+#[logos(skip "(//[^\n]+)|([ \t\r\n\n]+)|(/\\*[^(*/)]+\\*/)")]
 #[logos(extras = LogosState)]
 pub(crate) enum Token<'a> {
     // #[regex("//[^\n]*")]
@@ -31,7 +31,7 @@ pub(crate) enum Token<'a> {
     // BlockComment,
     #[token(",")]
     Comma,
-    #[token("::")]
+    #[token("::", priority = 2)]
     DoubleColon,
     #[token(":")]
     Colon,
@@ -87,7 +87,7 @@ fn top_level_definition<'a>(
 }
 
 fn literal<'a>() -> impl Parser<Token<'a>, Literal, Error = Simple<Token<'a>>> {
-    choice((function_literal(), string_literal()))
+    choice((string_literal(), function_literal()))
 }
 fn function_literal<'a>() -> impl Parser<Token<'a>, Literal, Error = Simple<Token<'a>>> {
     annotated_ident()
@@ -99,7 +99,7 @@ fn function_literal<'a>() -> impl Parser<Token<'a>, Literal, Error = Simple<Toke
 fn code_block<'a>() -> impl Parser<Token<'a>, Vec<Expr>, Error = Simple<Token<'a>>> {
     expr()
         .separated_by(just(Token::SemiColon))
-        .delimited_by(just(Token::LBracket), just(Token::RBracket))
+        .delimited_by(just(Token::LBrace), just(Token::RBrace))
 }
 fn expr<'a>() -> impl Parser<Token<'a>, Expr, Error = Simple<Token<'a>>> {
     recursive(|expr| {
@@ -111,15 +111,42 @@ fn expr<'a>() -> impl Parser<Token<'a>, Expr, Error = Simple<Token<'a>>> {
         //             .delimited_by(just(Token::LParen), just(Token::RParen)),
         //     )
         //     .map(|(fun, args)| Expr::FunctionCall(Box::new(fun), args));
+        //
+        //
+        //
+        let code_block = expr
+            .clone()
+            .separated_by(just(Token::SemiColon))
+            .delimited_by(just(Token::LBrace), just(Token::RBrace))
+            .labelled("Code block");
+
+        let function_literal = annotated_ident()
+            .separated_by(just(Token::Comma))
+            .delimited_by(just(Token::LParen), just(Token::RParen))
+            // .then_ignore(just(Token::FatArrow))
+            .then(code_block)
+            .map(|(args, body)| Literal::Function { args, body })
+            .labelled("Function literal");
+        let literal = choice((string_literal(), function_literal)).labelled("Literal");
+
+        let function_call = ident()
+            .then(
+                expr.separated_by(just(Token::Comma))
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
+            .map(|(f, args)| Expr::FunctionCall(Box::new(Expr::Ident(f)), args));
+
         choice((
+            literal.map(|lit| Expr::Literal(lit)),
+            function_call,
             ident().map(|i| Expr::Ident(i)),
-            literal().map(|lit| Expr::Literal(lit)),
-            // function_call,
         ))
+        .labelled("Expression")
     })
 }
 fn annotated_ident<'a>() -> impl Parser<Token<'a>, AnnotatedIdent, Error = Simple<Token<'a>>> {
     ident()
+        .then_ignore(just(Token::Colon))
         .then(type_name())
         .map(|(ident, annotation)| AnnotatedIdent {
             name: ident,
@@ -132,7 +159,7 @@ fn type_name<'a>() -> impl Parser<Token<'a>, TypeName, Error = Simple<Token<'a>>
         choice((
             ident().map(|name| TypeName::Named(name)),
             type_name
-                .delimited_by(just(Token::LBrace), just(Token::RBrace))
+                .delimited_by(just(Token::LBracket), just(Token::RBracket))
                 .map(|name| TypeName::Slice(Box::new(name))),
         ))
     })
@@ -140,7 +167,7 @@ fn type_name<'a>() -> impl Parser<Token<'a>, TypeName, Error = Simple<Token<'a>>
 
 fn string_literal<'a>() -> impl Parser<Token<'a>, Literal, Error = Simple<Token<'a>>> {
     select! {
-        Token::NormalString(s) => Literal::String(s.into())
+        Token::NormalString(s) => Literal::String(s[1..s.len() - 1].into())
     }
 }
 

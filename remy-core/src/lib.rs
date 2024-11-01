@@ -126,8 +126,8 @@ main :: (args: [string]) => {
     /*
      this too
     */
-    main :: (args: [string]) => {
-        "hi"
+    main :: (args: [string]) {
+        println("Hello world")
     }
         "#
             )
