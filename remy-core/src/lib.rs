@@ -1,7 +1,38 @@
+use std::ops::Range;
+
+use ast::File;
+use chumsky::{error::Simple, Parser, Span};
+use logos::Logos;
+use parser::{Spanned, Token};
+
+pub mod ast;
 pub mod parser;
+
+#[derive(Debug)]
+pub enum ParseError<'a> {
+    UnrecognizedToken(Range<usize>),
+    ParseFailed(Vec<Simple<Token<'a>>>),
+}
+
+pub fn parse(file: &str) -> Result<File, ParseError<'_>> {
+    let mut tokens = vec![];
+    let mut lexer = parser::Token::lexer(file);
+    while let Some(tok) = lexer.next() {
+        tokens.push(match tok {
+            Ok(tok) => Ok(/* Spanned( */ tok /* , lexer.span()) */),
+            Err(_) => Err(ParseError::UnrecognizedToken(lexer.span())),
+        }?);
+    }
+    dbg!(&tokens);
+    parser::file()
+        .parse(tokens)
+        .map_err(|err| ParseError::ParseFailed(err)) //.replace_err()
+}
 
 #[cfg(test)]
 mod tests {
+    use ast::{AnnotatedIdent, Expr, File, Literal, TopLevelDefinition, TypeName};
+
     use logos::Logos;
     #[cfg(test)]
     use pretty_assertions::{assert_eq, assert_ne};
@@ -38,36 +69,35 @@ main :: (args: [string]) => {
         assert_eq!(
             toks,
             vec![
-                Token::WhiteSpace,
-                Token::LineComment,
-                Token::WhiteSpace,
-                Token::BlockComment,
-                Token::WhiteSpace,
+                // Token::WhiteSpace,
+                // Token::LineComment,
+                // Token::WhiteSpace,
+                // Token::BlockComment,
+                // Token::WhiteSpace,
                 Token::Ident("main"),
-                Token::WhiteSpace,
-                Token::Colon,
-                Token::Colon,
-                Token::WhiteSpace,
+                // Token::WhiteSpace,
+                Token::DoubleColon,
+                // Token::WhiteSpace,
                 Token::LParen,
                 Token::Ident("args"),
                 Token::Colon,
-                Token::WhiteSpace,
+                // Token::WhiteSpace,
                 Token::LBracket,
                 Token::Ident("string"),
                 Token::RBracket,
                 Token::RParen,
-                Token::WhiteSpace,
+                // Token::WhiteSpace,
                 Token::FatArrow,
-                Token::WhiteSpace,
+                // Token::WhiteSpace,
                 Token::LBrace,
-                Token::WhiteSpace,
+                // Token::WhiteSpace,
                 Token::Ident("println"),
                 Token::LParen,
                 Token::NormalString("\"Hello to:\""),
                 Token::RParen,
                 Token::SemiColon,
-                Token::WhiteSpace,
-                Token::LineComment,
+                // Token::WhiteSpace,
+                // Token::LineComment,
                 // Token::WhiteSpace,
                 // Token::Ident("println"),
                 // Token::LParen,
@@ -81,10 +111,44 @@ main :: (args: [string]) => {
                 // Token::EndInterpolatedString("}\""),
                 // Token::RParen,
                 // Token::SemiColon,
-                Token::WhiteSpace,
+                // Token::WhiteSpace,
                 Token::RBrace,
-                Token::WhiteSpace,
+                // Token::WhiteSpace,
             ]
         );
+    }
+    #[test]
+    fn parsing() {
+        assert_eq!(
+            parse(
+                r#"
+    // hi
+    /*
+     this too
+    */
+    main :: (args: [string]) => {
+        "hi"
+    }
+        "#
+            )
+            .unwrap(),
+            File {
+                definitions: vec![TopLevelDefinition::Binding {
+                    name: "main".into(),
+                    rhs: ast::Literal::Function {
+                        args: vec![AnnotatedIdent {
+                            name: "args".into(),
+                            r#type: ast::TypeName::Slice(Box::new(TypeName::Named(
+                                "string".into()
+                            )))
+                        }],
+                        body: vec![Expr::FunctionCall(
+                            Box::new(Expr::Ident("println".into())),
+                            vec![Expr::Literal(Literal::String("Hello world".into()))]
+                        )]
+                    }
+                }]
+            }
+        )
     }
 }
