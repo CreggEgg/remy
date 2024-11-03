@@ -6,7 +6,9 @@ use chumsky::{
 };
 use logos::{Lexer, Logos, Skip, Span};
 
-use crate::ast::{AnnotatedIdent, Expr, File, Ident, Literal, TopLevelDefinition, TypeName};
+use crate::ast::{
+    AnnotatedIdent, BinaryOperator, Expr, File, Ident, Literal, TopLevelDefinition, TypeName,
+};
 #[derive(Debug, PartialEq, Default)]
 pub(crate) enum StringState {
     #[default]
@@ -63,6 +65,18 @@ pub(crate) enum Token<'a> {
     RBrace,
     #[regex(r#"[0-9]+(\.(0-9)+)?"#)]
     Number(&'a str),
+    #[token("+")]
+    Plus,
+    #[token("-")]
+    Minus,
+    #[token("*")]
+    Multiply,
+    #[token("/")]
+    Divide,
+    #[token("|")]
+    Bar,
+    #[token("match")]
+    Match,
 }
 #[derive(Clone)]
 pub struct Spanned<T: Clone>(pub T, pub Span);
@@ -117,17 +131,57 @@ fn expr<'a>() -> impl Parser<Token<'a>, Expr, Error = Simple<Token<'a>>> {
         let code_block = expr
             .clone()
             .separated_by(just(Token::SemiColon))
-            .delimited_by(just(Token::LBrace), just(Token::RBrace))
-            .labelled("Code block");
+            .delimited_by(just(Token::LBrace), just(Token::RBrace));
 
         let function_literal = annotated_ident()
             .separated_by(just(Token::Comma))
             .delimited_by(just(Token::LParen), just(Token::RParen))
             // .then_ignore(just(Token::FatArrow))
             .then(code_block)
-            .map(|(args, body)| Literal::Function { args, body })
-            .labelled("Function literal");
-        let literal = choice((string_literal(), function_literal)).labelled("Literal");
+            .map(|(args, body)| Literal::Function { args, body });
+
+        let literal = choice((
+            string_literal(),
+            bool_literal(),
+            int_literal(),
+            function_literal,
+        )); //.labelled("Literal");
+
+        let r#match = just(Token::Match)
+            .ignore_then(expr.clone())
+            .then(
+                just(Token::Bar)
+                    .ignore_then(literal.clone())
+                    .then_ignore(just(Token::FatArrow))
+                    .then(expr.clone())
+                    .repeated()
+                    .at_least(1),
+            )
+            .map(|(condition, cases)| Expr::Match {
+                target: Box::new(condition),
+                conditions: cases,
+            });
+        //     .then(
+        //         just(Token::Bar)
+        //             .ignore_then(literal())
+        //             .then_ignore(just(Token::FatArrow))
+        //             // .then(expr.clone())
+        //             .repeated()
+        //             .at_least(1),
+        //     )
+        //     .map(|(condition, cases)| Expr::Match {
+        //         target: condition,
+        //         conditions: vec![],
+        //     });
+
+        // .labelled("Code block");
+        let binding = ident()
+            .then_ignore(just(Token::DoubleColon))
+            .then(expr.clone())
+            .map(|(ident, value)| Expr::Binding {
+                ident,
+                value: Box::new(value),
+            });
 
         let function_call = ident()
             .then(
@@ -136,15 +190,64 @@ fn expr<'a>() -> impl Parser<Token<'a>, Expr, Error = Simple<Token<'a>>> {
             )
             .map(|(f, args)| Expr::FunctionCall(Box::new(Expr::Ident(f)), args));
 
-        choice((
+        let atom = choice((
             literal.map(|lit| Expr::Literal(lit)),
+            binding,
             function_call,
+            r#match,
             ident().map(|i| Expr::Ident(i)),
-        ))
-        .labelled("Expression")
+        ));
+        // .labelled("Atom");
+        let unary = atom.clone();
+
+        let product = unary
+            .clone()
+            // .clone()
+            .then(
+                (select! {
+                    Token::Multiply => BinaryOperator::Multiply,
+                    Token::Divide => BinaryOperator::Divide,
+                }
+                .then(unary))
+                .repeated(),
+            )
+            .foldl(|lhs, (op, rhs)| Expr::BinaryOp {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            });
+        // .map(|(lhs, rhs)| match rhs {
+        //     Some((op, rhs)) => Expr::BinaryOp {
+        //         op,
+        //         lhs: Box::new(lhs),
+        //         rhs: Box::new(rhs),
+        //     },
+        //     None => lhs,
+        // });
+        let sum = product
+            .clone()
+            .then(
+                (select! {
+                    Token::Plus => BinaryOperator::Add,
+                    Token::Minus => BinaryOperator::Subtract,
+                }
+                .then(product))
+                .repeated(),
+            )
+            .foldl(|lhs, (op, rhs)| Expr::BinaryOp {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            });
+        // .map(|(lhs, rhs)| {
+        //     let mut rhs_final =
+        // });
+        sum
     })
 }
-fn annotated_ident<'a>() -> impl Parser<Token<'a>, AnnotatedIdent, Error = Simple<Token<'a>>> {
+
+fn annotated_ident<'a>() -> impl Parser<Token<'a>, AnnotatedIdent, Error = Simple<Token<'a>>> + Clone
+{
     ident()
         .then_ignore(just(Token::Colon))
         .then(type_name())
@@ -154,7 +257,7 @@ fn annotated_ident<'a>() -> impl Parser<Token<'a>, AnnotatedIdent, Error = Simpl
         })
 }
 
-fn type_name<'a>() -> impl Parser<Token<'a>, TypeName, Error = Simple<Token<'a>>> {
+fn type_name<'a>() -> impl Parser<Token<'a>, TypeName, Error = Simple<Token<'a>>> + Clone {
     recursive(|type_name| {
         choice((
             ident().map(|name| TypeName::Named(name)),
@@ -165,9 +268,24 @@ fn type_name<'a>() -> impl Parser<Token<'a>, TypeName, Error = Simple<Token<'a>>
     })
 }
 
-fn string_literal<'a>() -> impl Parser<Token<'a>, Literal, Error = Simple<Token<'a>>> {
+fn string_literal<'a>() -> impl Parser<Token<'a>, Literal, Error = Simple<Token<'a>>> + Clone {
     select! {
         Token::NormalString(s) => Literal::String(s[1..s.len() - 1].into())
+    }
+}
+fn int_literal<'a>() -> impl Parser<Token<'a>, Literal, Error = Simple<Token<'a>>> + Clone {
+    select! {
+        Token::Number(s) => match s.parse::<i64>() {
+            Ok(num) => Literal::Int(num),
+            Err(_) => Literal::Float(s.parse().unwrap()),
+        }
+    }
+}
+fn bool_literal<'a>() -> impl Parser<Token<'a>, Literal, Error = Simple<Token<'a>>> + Clone {
+    select! {
+        Token::Ident("true") => Literal::Bool(true),
+        Token::Ident("false") => Literal::Bool(false),
+
     }
 }
 
@@ -180,8 +298,7 @@ fn string_literal<'a>() -> impl Parser<Token<'a>, Literal, Error = Simple<Token<
 //     .repeated()
 //     .ignored()
 // }
-
-fn ident<'a>() -> impl Parser<Token<'a>, Ident, Error = Simple<Token<'a>>> {
+fn ident<'a>() -> impl Parser<Token<'a>, Ident, Error = Simple<Token<'a>>> + Clone {
     filter(|t| matches!(t, Token::Ident(_))).map(|t| {
         if let Token::Ident(i) = t {
             i.into()

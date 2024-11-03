@@ -46,7 +46,13 @@ mod tests {
 */
 main :: (args: [string]) => {
     println("Hello to:");
+    5+5* 6 / 90 - 20;
     // println("${args[0]!!}");
+    x :: true;
+    match x 
+    | true => println("this will always happen")
+    | false => println("this will never happen")
+    ;
 }
 "#;
 
@@ -96,6 +102,37 @@ main :: (args: [string]) => {
                 Token::NormalString("\"Hello to:\""),
                 Token::RParen,
                 Token::SemiColon,
+                Token::Number("5"),
+                Token::Plus,
+                Token::Number("5"),
+                Token::Multiply,
+                Token::Number("6"),
+                Token::Divide,
+                Token::Number("90"),
+                Token::Minus,
+                Token::Number("20"),
+                Token::SemiColon,
+                Token::Ident("x"),
+                Token::DoubleColon,
+                Token::Ident("true"),
+                Token::SemiColon,
+                Token::Match,
+                Token::Ident("x"),
+                Token::Bar,
+                Token::Ident("true"),
+                Token::FatArrow,
+                Token::Ident("println"),
+                Token::LParen,
+                Token::NormalString("\"this will always happen\""),
+                Token::RParen,
+                Token::Bar,
+                Token::Ident("false"),
+                Token::FatArrow,
+                Token::Ident("println"),
+                Token::LParen,
+                Token::NormalString("\"this will never happen\""),
+                Token::RParen,
+                Token::SemiColon,
                 // Token::WhiteSpace,
                 // Token::LineComment,
                 // Token::WhiteSpace,
@@ -118,7 +155,7 @@ main :: (args: [string]) => {
         );
     }
     #[test]
-    fn parsing() {
+    fn parsing_simple() {
         assert_eq!(
             parse(
                 r#"
@@ -146,6 +183,146 @@ main :: (args: [string]) => {
                             Box::new(Expr::Ident("println".into())),
                             vec![Expr::Literal(Literal::String("Hello world".into()))]
                         )]
+                    }
+                }]
+            }
+        )
+    }
+    #[test]
+    fn parsing_binary_operations() {
+        assert_eq!(
+            parse(
+                r#"
+    // hi
+    /*
+     this too
+    */
+    main :: (args: [string]) {
+        println(5+5*6);
+        println(5+5+4+4-4*6*20/15)
+    }
+        "#
+            )
+            .unwrap(),
+            File {
+                definitions: vec![TopLevelDefinition::Binding {
+                    name: "main".into(),
+                    rhs: ast::Literal::Function {
+                        args: vec![AnnotatedIdent {
+                            name: "args".into(),
+                            r#type: ast::TypeName::Slice(Box::new(TypeName::Named(
+                                "string".into()
+                            )))
+                        }],
+                        body: vec![
+                            Expr::FunctionCall(
+                                Box::new(Expr::Ident("println".into())),
+                                vec![Expr::BinaryOp {
+                                    op: ast::BinaryOperator::Add,
+                                    lhs: Box::new(Expr::Literal(Literal::Int(5))),
+                                    rhs: Box::new(Expr::BinaryOp {
+                                        op: ast::BinaryOperator::Multiply,
+                                        lhs: Box::new(Expr::Literal(Literal::Int(5))),
+                                        rhs: Box::new(Expr::Literal(Literal::Int(6)))
+                                    })
+                                }]
+                            ),
+                            Expr::FunctionCall(
+                                Box::new(Expr::Ident("println".into())),
+                                vec![Expr::BinaryOp {
+                                    op: ast::BinaryOperator::Subtract,
+                                    lhs: Box::new(Expr::BinaryOp {
+                                        op: ast::BinaryOperator::Add,
+                                        lhs: Box::new(Expr::BinaryOp {
+                                            op: ast::BinaryOperator::Add,
+                                            lhs: Box::new(Expr::BinaryOp {
+                                                op: ast::BinaryOperator::Add,
+                                                lhs: Box::new(Expr::Literal(Literal::Int(5,),)),
+                                                rhs: Box::new(Expr::Literal(Literal::Int(5,),)),
+                                            }),
+                                            rhs: Box::new(Expr::Literal(Literal::Int(4,),)),
+                                        }),
+                                        rhs: Box::new(Expr::Literal(Literal::Int(4,),)),
+                                    }),
+                                    rhs: Box::new(Expr::BinaryOp {
+                                        op: ast::BinaryOperator::Divide,
+                                        lhs: Box::new(Expr::BinaryOp {
+                                            op: ast::BinaryOperator::Multiply,
+                                            lhs: Box::new(Expr::BinaryOp {
+                                                op: ast::BinaryOperator::Multiply,
+                                                lhs: Box::new(Expr::Literal(Literal::Int(4))),
+                                                rhs: Box::new(Expr::Literal(Literal::Int(6)))
+                                            }),
+                                            rhs: Box::new(Expr::Literal(Literal::Int(20)))
+                                        }),
+                                        rhs: Box::new(Expr::Literal(Literal::Int(15)))
+                                    })
+                                }]
+                            )
+                        ]
+                    }
+                }]
+            }
+        )
+    }
+    #[test]
+    fn parsing_match() {
+        assert_eq!(
+            parse(
+                r#"
+    // hi
+    /*
+     this too
+    */
+    main :: (args: [string]) {
+        x :: true;
+        match x 
+        | true => println("this will always happen")
+        | false => println("this will never happen")
+        
+    }
+        "#
+            )
+            .unwrap(),
+            File {
+                definitions: vec![TopLevelDefinition::Binding {
+                    name: "main".into(),
+                    rhs: ast::Literal::Function {
+                        args: vec![AnnotatedIdent {
+                            name: "args".into(),
+                            r#type: ast::TypeName::Slice(Box::new(TypeName::Named(
+                                "string".into()
+                            )))
+                        }],
+                        body: vec![
+                            Expr::Binding {
+                                ident: "x".into(),
+                                value: Box::new(Expr::Literal(Literal::Bool(true)))
+                            },
+                            Expr::Match {
+                                target: Box::new(Expr::Ident("x".into())),
+                                conditions: vec![
+                                    (
+                                        Literal::Bool(true),
+                                        Expr::FunctionCall(
+                                            Box::new(Expr::Ident("println".into())),
+                                            vec![Expr::Literal(Literal::String(
+                                                "this will always happen".into()
+                                            ))]
+                                        )
+                                    ),
+                                    (
+                                        Literal::Bool(false),
+                                        Expr::FunctionCall(
+                                            Box::new(Expr::Ident("println".into())),
+                                            vec![Expr::Literal(Literal::String(
+                                                "this will never happen".into()
+                                            ))]
+                                        )
+                                    )
+                                ]
+                            }
+                        ]
                     }
                 }]
             }
