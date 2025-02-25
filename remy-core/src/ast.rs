@@ -6,14 +6,20 @@ pub struct File {
 #[derive(Debug, PartialEq)]
 pub enum TopLevelDefinition {
     Binding { lhs: BindingLeftHand, rhs: Literal },
-    Extern { lhs: BindingLeftHand, rhs: Ident },
+    Extern { name: Ident, rhs: TypeName },
 }
 
 #[derive(Debug, PartialEq)]
 pub struct BindingLeftHand {
     pub name: Ident,
-    pub type_args: Vec<TypeName>,
+    pub type_args: Vec<ConstrainedType>,
 }
+#[derive(Debug, PartialEq)]
+pub struct ConstrainedType {
+    pub name: Ident,
+    pub constraints: Vec<TypeConstraint>,
+}
+pub type TypeConstraint = Ident;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
@@ -23,6 +29,7 @@ pub enum Literal {
     Bool(bool),
     Function {
         args: Vec<AnnotatedIdent>,
+        ret_type: TypeName,
         body: Vec<Expr>,
     },
 }
@@ -58,6 +65,10 @@ pub type Ident = String;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeName {
+    Function {
+        args: Vec<TypeName>,
+        ret: Box<TypeName>,
+    },
     Named(Ident),
     Slice(Box<TypeName>),
 }

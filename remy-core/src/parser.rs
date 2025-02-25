@@ -7,7 +7,7 @@ use chumsky::{
 use logos::{Lexer, Logos, Skip, Span};
 
 use crate::ast::{
-    AnnotatedIdent, BinaryOperator, BindingLeftHand, Expr, File, Ident, Literal,
+    AnnotatedIdent, BinaryOperator, BindingLeftHand, ConstrainedType, Expr, File, Ident, Literal,
     TopLevelDefinition, TypeName,
 };
 #[derive(Debug, PartialEq, Default)]
@@ -60,6 +60,8 @@ pub enum Token<'a> {
     // StartInterpolatedString(&'a str),
     // #[regex(r#"\}(?:[^"(\$\{)]|\\")*""#, interpolated_string_callback)]
     // EndInterpolatedString(&'a str),
+    #[token("&")]
+    And,
     #[token("{")]
     LBrace,
     #[token("}", priority = 1)]
@@ -114,14 +116,14 @@ fn binding_definition<'a>() -> impl Parser<Token<'a>, TopLevelDefinition, Error 
         })
 }
 fn binding_external<'a>() -> impl Parser<Token<'a>, TopLevelDefinition, Error = Simple<Token<'a>>> {
-    binding_left_hand()
+    just(Token::Extern)
+        .ignore_then(ident())
         // .padded_by(ws())
-        .then_ignore(just(Token::Colon))
-        .then_ignore(just(Token::Extern))
-        .then(ident())
-        .map(|(binding_left_hand, name)| TopLevelDefinition::Extern {
-            lhs: binding_left_hand,
-            rhs: name,
+        .then_ignore(just(Token::DoubleColon))
+        .then(type_name())
+        .map(|(name, type_name)| TopLevelDefinition::Extern {
+            name,
+            rhs: type_name,
         })
 }
 
@@ -129,13 +131,25 @@ fn binding_left_hand<'a>() -> impl Parser<Token<'a>, BindingLeftHand, Error = Si
     ident()
         .then(
             just(Token::LessThan)
-                .ignore_then(type_name().separated_by(just(Token::Comma)))
+                .ignore_then(constrained_type().separated_by(just(Token::Comma)))
                 .then_ignore(just(Token::GreaterThan))
                 .or_not(),
         )
         .map(|(name, type_args)| BindingLeftHand {
             name,
             type_args: type_args.unwrap_or_default(),
+        })
+}
+fn constrained_type<'a>() -> impl Parser<Token<'a>, ConstrainedType, Error = Simple<Token<'a>>> {
+    ident()
+        .then(
+            (just(Token::Colon))
+                .ignore_then(ident().separated_by(just(Token::And)))
+                .or_not(),
+        )
+        .map(|(name, constraints)| ConstrainedType {
+            name,
+            constraints: constraints.unwrap_or_default(),
         })
 }
 
@@ -146,8 +160,13 @@ fn function_literal<'a>() -> impl Parser<Token<'a>, Literal, Error = Simple<Toke
     annotated_ident()
         .separated_by(just(Token::Comma))
         .delimited_by(just(Token::LParen), just(Token::RParen))
+        .then(type_name().or_not())
         .then(code_block())
-        .map(|(args, body)| Literal::Function { args, body })
+        .map(|((args, ret_type), body)| Literal::Function {
+            args,
+            ret_type: ret_type.unwrap_or(TypeName::Named("unit".into())),
+            body,
+        })
 }
 fn code_block<'a>() -> impl Parser<Token<'a>, Vec<Expr>, Error = Simple<Token<'a>>> {
     expr()
@@ -175,9 +194,13 @@ fn expr<'a>() -> impl Parser<Token<'a>, Expr, Error = Simple<Token<'a>>> {
         let function_literal = annotated_ident()
             .separated_by(just(Token::Comma))
             .delimited_by(just(Token::LParen), just(Token::RParen))
-            // .then_ignore(just(Token::FatArrow))
+            .then(type_name().or_not())
             .then(code_block)
-            .map(|(args, body)| Literal::Function { args, body });
+            .map(|((args, ret_type), body)| Literal::Function {
+                args,
+                ret_type: ret_type.unwrap_or(TypeName::Named("unit".into())),
+                body,
+            });
 
         let literal = choice((
             string_literal(),
@@ -301,8 +324,19 @@ fn type_name<'a>() -> impl Parser<Token<'a>, TypeName, Error = Simple<Token<'a>>
         choice((
             ident().map(|name| TypeName::Named(name)),
             type_name
+                .clone()
                 .delimited_by(just(Token::LBracket), just(Token::RBracket))
                 .map(|name| TypeName::Slice(Box::new(name))),
+            type_name
+                .clone()
+                .separated_by(just(Token::Comma))
+                .delimited_by(just(Token::LParen), just(Token::RParen))
+                // .then_ignore(just(Token::Colon))
+                .then(type_name)
+                .map(|(args, ret)| TypeName::Function {
+                    args,
+                    ret: Box::new(ret),
+                }),
         ))
     })
 }

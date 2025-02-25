@@ -1,5 +1,6 @@
 use ast::{
-    AnnotatedIdent, BindingLeftHand, Expr, File, Ident, Literal, TopLevelDefinition, TypeName,
+    AnnotatedIdent, BindingLeftHand, ConstrainedType, Expr, File, Ident, Literal,
+    TopLevelDefinition, TypeName,
 };
 
 use logos::Logos;
@@ -149,6 +150,7 @@ fn parsing_simple() {
                         name: "args".into(),
                         r#type: ast::TypeName::Slice(Box::new(TypeName::Named("string".into())))
                     }],
+                    ret_type: TypeName::Named("unit".into()),
                     body: vec![Expr::FunctionCall(
                         Box::new(Expr::Ident("println".into())),
                         vec![Expr::Literal(Literal::String("Hello world".into()))]
@@ -181,6 +183,7 @@ fn parsing_binary_operations() {
                     type_args: Vec::new()
                 },
                 rhs: ast::Literal::Function {
+                    ret_type: TypeName::Named("unit".into()),
                     args: vec![AnnotatedIdent {
                         name: "args".into(),
                         r#type: ast::TypeName::Slice(Box::new(TypeName::Named("string".into())))
@@ -262,6 +265,7 @@ fn parsing_match() {
                     type_args: Vec::new()
                 },
                 rhs: ast::Literal::Function {
+                    ret_type: TypeName::Named("unit".into()),
                     args: vec![AnnotatedIdent {
                         name: "args".into(),
                         r#type: ast::TypeName::Slice(Box::new(TypeName::Named("string".into())))
@@ -300,32 +304,42 @@ fn parsing_match() {
         }
     )
 }
-// #[test]
-// fn parsing_generic() {
-//     assert_eq!(
-//         parse(
-//             r#"
-//     // hi
-//     /*
-//      this too
-//     */
-//     test<int> :: () {
-//
-//     }
-//         "#
-//         )
-//         .unwrap(),
-//         File {
-//             definitions: vec![TopLevelDefinition::Extern {
-//                 lhs: BindingLeftHand {
-//                     name: "println".into(),
-//                     type_args: vec![TypeName::Named("string".into())]
-//                 },
-//                 rhs: "printstr".into()
-//             }]
-//         }
-//     )
-// }
+#[test]
+fn parsing_generic() {
+    assert_eq!(
+        parse(
+            r#"
+    // hi
+    /*
+     this too
+    */
+    identity<t> :: (x: t) t {
+        x
+    }
+        "#
+        )
+        .unwrap(),
+        File {
+            definitions: vec![TopLevelDefinition::Binding {
+                lhs: BindingLeftHand {
+                    name: "identity".into(),
+                    type_args: vec![ConstrainedType {
+                        name: "t".into(),
+                        constraints: vec![]
+                    }]
+                },
+                rhs: Literal::Function {
+                    args: vec![AnnotatedIdent {
+                        name: "x".into(),
+                        r#type: TypeName::Named("t".into())
+                    }],
+                    ret_type: TypeName::Named("t".into()),
+                    body: vec![Expr::Ident("x".into())]
+                }
+            }]
+        }
+    )
+}
 #[test]
 fn parsing_extern() {
     assert_eq!(
@@ -335,18 +349,44 @@ fn parsing_extern() {
     /*
      this too
     */
-    println<string>: extern printstr
+    extern printstr :: (string) unit
+    println<t: string> :: (x: t) {
+        printstr(x)
+    }
         "#
         )
         .unwrap(),
         File {
-            definitions: vec![TopLevelDefinition::Extern {
-                lhs: BindingLeftHand {
-                    name: "println".into(),
-                    type_args: vec![TypeName::Named("string".into())]
+            definitions: vec![
+                TopLevelDefinition::Extern {
+                    name: "printstr".into(),
+
+                    rhs: TypeName::Function {
+                        args: vec![TypeName::Named("string".into())],
+                        ret: Box::new(TypeName::Named("unit".into()))
+                    }
                 },
-                rhs: "printstr".into()
-            }]
+                TopLevelDefinition::Binding {
+                    lhs: BindingLeftHand {
+                        name: "println".into(),
+                        type_args: vec![ConstrainedType {
+                            name: "t".into(),
+                            constraints: vec!["string".into()]
+                        }]
+                    },
+                    rhs: Literal::Function {
+                        ret_type: TypeName::Named("unit".into()),
+                        args: vec![AnnotatedIdent {
+                            name: "x".into(),
+                            r#type: TypeName::Named("t".into())
+                        }],
+                        body: vec![Expr::FunctionCall(
+                            Box::new(Expr::Ident("printstr".into())),
+                            vec![Expr::Ident("x".into())]
+                        )]
+                    }
+                }
+            ]
         }
     )
 }
