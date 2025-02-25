@@ -7,7 +7,8 @@ use chumsky::{
 use logos::{Lexer, Logos, Skip, Span};
 
 use crate::ast::{
-    AnnotatedIdent, BinaryOperator, Expr, File, Ident, Literal, TopLevelDefinition, TypeName,
+    AnnotatedIdent, BinaryOperator, BindingLeftHand, Expr, File, Ident, Literal,
+    TopLevelDefinition, TypeName,
 };
 #[derive(Debug, PartialEq, Default)]
 pub(crate) enum StringState {
@@ -17,14 +18,14 @@ pub(crate) enum StringState {
 }
 
 #[derive(Debug, PartialEq, Default)]
-pub(crate) struct LogosState {
+pub struct LogosState {
     string_state: StringState,
 }
 
 #[derive(Logos, Debug, PartialEq, Eq, Hash, Clone)]
 #[logos(skip "(//[^\n]+)|([ \t\r\n\n]+)|(/\\*[^(*/)]+\\*/)")]
 #[logos(extras = LogosState)]
-pub(crate) enum Token<'a> {
+pub enum Token<'a> {
     // #[regex("//[^\n]*")]
     // LineComment,
     // #[regex("[ \t\r\n\n]+")]
@@ -63,6 +64,10 @@ pub(crate) enum Token<'a> {
     LBrace,
     #[token("}", priority = 1)]
     RBrace,
+    #[token("<")]
+    LessThan,
+    #[token(">")]
+    GreaterThan,
     #[regex(r#"[0-9]+(\.(0-9)+)?"#)]
     Number(&'a str),
     #[token("+")]
@@ -77,6 +82,8 @@ pub(crate) enum Token<'a> {
     Bar,
     #[token("match")]
     Match,
+    #[token("extern")]
+    Extern,
 }
 #[derive(Clone)]
 pub struct Spanned<T: Clone>(pub T, pub Span);
@@ -93,11 +100,43 @@ pub(crate) fn file<'a>() -> impl Parser<Token<'a>, File, Error = Simple<Token<'a
 }
 fn top_level_definition<'a>(
 ) -> impl Parser<Token<'a>, TopLevelDefinition, Error = Simple<Token<'a>>> {
-    ident()
+    choice((binding_definition(), binding_external()))
+}
+fn binding_definition<'a>() -> impl Parser<Token<'a>, TopLevelDefinition, Error = Simple<Token<'a>>>
+{
+    binding_left_hand()
         // .padded_by(ws())
         .then_ignore(just(Token::DoubleColon))
         .then(literal())
-        .map(|(name, value)| TopLevelDefinition::Binding { name, rhs: value })
+        .map(|(binding_left_hand, value)| TopLevelDefinition::Binding {
+            lhs: binding_left_hand,
+            rhs: value,
+        })
+}
+fn binding_external<'a>() -> impl Parser<Token<'a>, TopLevelDefinition, Error = Simple<Token<'a>>> {
+    binding_left_hand()
+        // .padded_by(ws())
+        .then_ignore(just(Token::Colon))
+        .then_ignore(just(Token::Extern))
+        .then(ident())
+        .map(|(binding_left_hand, name)| TopLevelDefinition::Extern {
+            lhs: binding_left_hand,
+            rhs: name,
+        })
+}
+
+fn binding_left_hand<'a>() -> impl Parser<Token<'a>, BindingLeftHand, Error = Simple<Token<'a>>> {
+    ident()
+        .then(
+            just(Token::LessThan)
+                .ignore_then(type_name().separated_by(just(Token::Comma)))
+                .then_ignore(just(Token::GreaterThan))
+                .or_not(),
+        )
+        .map(|(name, type_args)| BindingLeftHand {
+            name,
+            type_args: type_args.unwrap_or_default(),
+        })
 }
 
 fn literal<'a>() -> impl Parser<Token<'a>, Literal, Error = Simple<Token<'a>>> {
@@ -306,10 +345,4 @@ fn ident<'a>() -> impl Parser<Token<'a>, Ident, Error = Simple<Token<'a>>> + Clo
             unreachable!()
         }
     })
-}
-#[cfg(test)]
-mod tests {
-    use chumsky::{primitive::end, Parser};
-
-    use crate::parser::Token;
 }

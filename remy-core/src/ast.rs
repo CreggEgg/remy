@@ -5,8 +5,16 @@ pub struct File {
 
 #[derive(Debug, PartialEq)]
 pub enum TopLevelDefinition {
-    Binding { name: Ident, rhs: Literal },
+    Binding { lhs: BindingLeftHand, rhs: Literal },
+    Extern { lhs: BindingLeftHand, rhs: Ident },
 }
+
+#[derive(Debug, PartialEq)]
+pub struct BindingLeftHand {
+    pub name: Ident,
+    pub type_args: Vec<TypeName>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
     String(String),
