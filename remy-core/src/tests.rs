@@ -1,8 +1,10 @@
+use crate::parser::parse;
 use ast::{
     AnnotatedIdent, BindingLeftHand, ConstrainedType, Expr, File, Ident, Literal,
     TopLevelDefinition, TypeName,
 };
 
+use inkwell::{execution_engine::JitFunction, module::Module};
 use logos::Logos;
 #[cfg(test)]
 use pretty_assertions::assert_eq;
@@ -390,3 +392,33 @@ fn parsing_extern() {
         }
     )
 }
+// #[test]
+// fn initial_compiler_test() {
+//     let file = r#"
+//
+// main :: () int {
+//     15 + 15
+// }
+//     "#;
+//     println!("404 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+//     let (ctx, module) = compile_file("main", file).unwrap();
+//     println!("406 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+//     let module = ctx.create_module_from_ir(module).unwrap();
+//     // let module = unsafe { Module::new(module) };
+//     //
+//     println!("410 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+//     let execution_engine = module
+//         .create_jit_execution_engine(inkwell::OptimizationLevel::None)
+//         .unwrap();
+//     println!("411 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+//     let function: JitFunction<unsafe extern "C" fn() -> i64> =
+//         unsafe { execution_engine.get_function("main").ok() }.unwrap();
+//     println!("414 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+//     unsafe {
+//         dbg!(function.call());
+//     }
+//     println!("418 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+//     assert_eq!(unsafe { function.call() }, 0);
+//     println!("420 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+//     // assert_eq!(126, 127);
+// }

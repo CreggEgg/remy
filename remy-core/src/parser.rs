@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use chumsky::{
     error::Simple,
     primitive::{any, choice, end, filter, filter_map, just},
@@ -10,6 +12,26 @@ use crate::ast::{
     AnnotatedIdent, BinaryOperator, BindingLeftHand, ConstrainedType, Expr, File, Ident, Literal,
     TopLevelDefinition, TypeName,
 };
+#[derive(Debug)]
+pub enum ParseError<'a> {
+    UnrecognizedToken(Range<usize>),
+    ParseFailed(Vec<Simple<Token<'a>>>),
+}
+
+pub fn parse(file_to_parse: &str) -> Result<File, ParseError<'_>> {
+    let mut tokens = vec![];
+    let mut lexer = Token::lexer(file_to_parse);
+    while let Some(tok) = lexer.next() {
+        tokens.push(match tok {
+            Ok(tok) => Ok(/* Spanned( */ tok /* , lexer.span()) */),
+            Err(_) => Err(ParseError::UnrecognizedToken(lexer.span())),
+        }?);
+    }
+    dbg!(&tokens);
+    file()
+        .parse(tokens)
+        .map_err(|err| ParseError::ParseFailed(err)) //.replace_err()
+}
 #[derive(Debug, PartialEq, Default)]
 pub(crate) enum StringState {
     #[default]
