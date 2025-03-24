@@ -5,8 +5,14 @@ pub struct TypedFile {
 
 #[derive(Debug, PartialEq)]
 pub enum TypedTopLevelDefinition {
-    Binding { lhs: BindingLeftHand, rhs: Literal },
-    Extern { name: Ident, rhs: TypeName },
+    Binding {
+        lhs: TypedBindingLeftHand,
+        rhs: TypedLiteral,
+    },
+    Extern {
+        name: Ident,
+        rhs: Type,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -64,13 +70,11 @@ pub enum BinaryOperator {
 pub type Ident = String;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum TypeName {
-    Function {
-        args: Vec<TypeName>,
-        ret: Box<TypeName>,
-    },
-    Named(Ident),
-    Slice(Box<TypeName>),
+pub enum Type {
+    Function { args: Vec<Type>, ret: Box<Type> },
+    Struct { fields: HashMap<String, Type> },
+    Slice(Box<Type>),
+    Array { contained: Box<Type>, len: usize },
 }
 
 #[derive(Clone, Debug, PartialEq)]

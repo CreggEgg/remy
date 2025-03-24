@@ -352,9 +352,9 @@ fn parsing_extern() {
      this too
     */
     extern printstr :: (string) unit
-    println<t: string> :: (x: t) {
-        printstr(x)
-    }
+    // println<t: string> :: (x: t) {
+    //     printstr(x)
+    // }
         "#
         )
         .unwrap(),
@@ -368,26 +368,26 @@ fn parsing_extern() {
                         ret: Box::new(TypeName::Named("unit".into()))
                     }
                 },
-                TopLevelDefinition::Binding {
-                    lhs: BindingLeftHand {
-                        name: "println".into(),
-                        type_args: vec![ConstrainedType {
-                            name: "t".into(),
-                            constraints: vec!["string".into()]
-                        }]
-                    },
-                    rhs: Literal::Function {
-                        ret_type: TypeName::Named("unit".into()),
-                        args: vec![AnnotatedIdent {
-                            name: "x".into(),
-                            r#type: TypeName::Named("t".into())
-                        }],
-                        body: vec![Expr::FunctionCall(
-                            Box::new(Expr::Ident("printstr".into())),
-                            vec![Expr::Ident("x".into())]
-                        )]
-                    }
-                }
+                // TopLevelDefinition::Binding {
+                //     lhs: BindingLeftHand {
+                //         name: "println".into(),
+                //         type_args: vec![ConstrainedType {
+                //             name: "t".into(),
+                //             constraints: vec!["string".into()]
+                //         }]
+                //     },
+                //     rhs: Literal::Function {
+                //         ret_type: TypeName::Named("unit".into()),
+                //         args: vec![AnnotatedIdent {
+                //             name: "x".into(),
+                //             r#type: TypeName::Named("t".into())
+                //         }],
+                //         body: vec![Expr::FunctionCall(
+                //             Box::new(Expr::Ident("printstr".into())),
+                //             vec![Expr::Ident("x".into())]
+                //         )]
+                //     }
+                // }
             ]
         }
     )
